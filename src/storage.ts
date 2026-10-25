@@ -38,8 +38,18 @@ export interface State {
   settings: Settings;
 }
 
+/** Senaste lyckade Overpass-svaret, så appen funkar när Overpass inte svarar. */
+export interface RestaurantCache {
+  lat: number;
+  lon: number;
+  radius: number;
+  fetchedAt: string; // ISO
+  restaurants: Restaurant[];
+}
+
 const KEY = 'lunchslumpen';
 export const KNOWN_KEY = 'lunchslumpen.known';
+const CACHE_KEY = 'lunchslumpen.cache';
 
 export const defaultSettings: Settings = {
   radiusMeters: 1000,
@@ -74,8 +84,37 @@ export function save(state: State): void {
   localStorage.setItem(KEY, JSON.stringify(state));
 }
 
-/** Tömmer all sparad data: state och kända restaurangnamn. */
+export function loadCache(): RestaurantCache | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as RestaurantCache;
+    if (
+      typeof c.lat !== 'number' ||
+      typeof c.lon !== 'number' ||
+      typeof c.radius !== 'number' ||
+      typeof c.fetchedAt !== 'string' ||
+      !Array.isArray(c.restaurants)
+    ) {
+      return null;
+    }
+    return c;
+  } catch {
+    return null; // korrupt cache → behandla som saknad
+  }
+}
+
+export function saveCache(cache: RestaurantCache): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // fullt localStorage → klara oss utan cache
+  }
+}
+
+/** Tömmer all sparad data: state, kända restaurangnamn och restaurangcachen. */
 export function clearAll(): void {
   localStorage.removeItem(KEY);
   localStorage.removeItem(KNOWN_KEY);
+  localStorage.removeItem(CACHE_KEY);
 }

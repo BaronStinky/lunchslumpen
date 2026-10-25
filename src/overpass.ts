@@ -1,13 +1,12 @@
 import type { Restaurant } from './storage';
 
+// En server som hänger ska inte blockera – efter timeoutMs går vi vidare till nästa spegel.
+// Huvudservern får längre tid än speglarna.
 const ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
+  { url: 'https://overpass-api.de/api/interpreter', timeoutMs: 15_000 },
+  { url: 'https://overpass.private.coffee/api/interpreter', timeoutMs: 8_000 },
+  { url: 'https://overpass.kumi.systems/api/interpreter', timeoutMs: 8_000 },
 ];
-
-// En server som hänger ska inte blockera – efter så här lång tid går vi vidare till nästa spegel.
-const TIMEOUT_MS = 8_000;
 
 interface OverpassElement {
   type: 'node' | 'way' | 'relation';
@@ -25,15 +24,15 @@ export async function fetchRestaurants(
 ): Promise<Restaurant[]> {
   // nwr = node/way/relation. "out center" ger en mittpunkt för ytor (byggnader).
   const query = `
-    [out:json][timeout:10];
+    [out:json][timeout:25];
     nwr(around:${radius},${lat},${lon})["amenity"="restaurant"]["name"];
     out center tags;
   `;
 
   let lastError: unknown;
-  for (const url of ENDPOINTS) {
+  for (const { url, timeoutMs } of ENDPOINTS) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(url, {
         method: 'POST',

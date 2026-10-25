@@ -11,7 +11,9 @@ import {
   emptyState,
   KNOWN_KEY,
   load,
+  loadCache,
   save,
+  saveCache,
   type Restaurant,
   type State,
 } from './storage';
@@ -20,13 +22,22 @@ type Phase =
   | { kind: 'idle' }
   | { kind: 'locating' }
   | { kind: 'searching' }
-  | { kind: 'candidate'; restaurant: Restaurant; pool: Restaurant[]; origin: Coords }
+  | {
+      kind: 'candidate';
+      restaurant: Restaurant;
+      pool: Restaurant[];
+      origin: Coords;
+      staleSince?: string; // satt när Overpass föll och vi använder en gammal cache
+    }
   | { kind: 'error'; message: string };
 
 interface Coords {
   lat: number;
   lon: number;
 }
+
+const CACHE_MAX_AGE_MS = 7 * 86_400_000;
+const CACHE_MAX_DISTANCE_M = 300;
 
 export default function App() {
   const [state, setState] = useState<State>(load);
@@ -65,20 +76,47 @@ export default function App() {
       return;
     }
 
-    setPhase({ kind: 'searching' });
+    // En cache duger om den hämtades nära härifrån med samma radie.
+    const radius = state.settings.radiusMeters;
+    const cached = loadCache();
+    const cache =
+      cached &&
+      cached.radius === radius &&
+      distanceMeters(cached.lat, cached.lon, origin.lat, origin.lon) <= CACHE_MAX_DISTANCE_M
+        ? cached
+        : null;
+
     let pool: Restaurant[];
-    try {
-      pool = await fetchRestaurants(origin.lat, origin.lon, state.settings.radiusMeters);
-    } catch {
-      setPhase({ kind: 'error', message: 'Overpass svarade inte. Försök igen om en stund.' });
-      return;
+    let staleSince: string | undefined;
+    if (cache && Date.now() - new Date(cache.fetchedAt).getTime() < CACHE_MAX_AGE_MS) {
+      pool = cache.restaurants;
+    } else {
+      setPhase({ kind: 'searching' });
+      try {
+        pool = await fetchRestaurants(origin.lat, origin.lon, radius);
+        saveCache({
+          lat: origin.lat,
+          lon: origin.lon,
+          radius,
+          fetchedAt: new Date().toISOString(),
+          restaurants: pool,
+        });
+      } catch {
+        if (!cache) {
+          setPhase({ kind: 'error', message: 'Overpass svarade inte. Försök igen om en stund.' });
+          return;
+        }
+        // Overpass föll men vi har en äldre lista härifrån – bättre än ingenting.
+        pool = cache.restaurants;
+        staleSince = cache.fetchedAt;
+      }
     }
 
     setKnown((k) => ({ ...k, ...Object.fromEntries(pool.map((r) => [r.id, r])) }));
-    rollFrom(pool, origin);
+    rollFrom(pool, origin, staleSince);
   }
 
-  function rollFrom(pool: Restaurant[], origin: Coords) {
+  function rollFrom(pool: Restaurant[], origin: Coords, staleSince?: string) {
     const pick = pickRandom(pool, state);
     if (!pick) {
       const n = pool.length;
@@ -91,7 +129,7 @@ export default function App() {
       });
       return;
     }
-    setPhase({ kind: 'candidate', restaurant: pick, pool, origin });
+    setPhase({ kind: 'candidate', restaurant: pick, pool, origin, staleSince });
   }
 
   function accept(r: Restaurant, origin: Coords) {
@@ -205,8 +243,9 @@ export default function App() {
           restaurant={phase.restaurant}
           origin={phase.origin}
           onAccept={() => accept(phase.restaurant, phase.origin)}
-          onReroll={() => rollFrom(phase.pool, phase.origin)}
+          onReroll={() => rollFrom(phase.pool, phase.origin, phase.staleSince)}
           poolSize={phase.pool.length}
+          staleSince={phase.staleSince}
         />
       ) : (
         <section className="card center">
@@ -294,12 +333,14 @@ function Candidate({
   onAccept,
   onReroll,
   poolSize,
+  staleSince,
 }: {
   restaurant: Restaurant;
   origin: Coords;
   onAccept: () => void;
   onReroll: () => void;
   poolSize: number;
+  staleSince?: string;
 }) {
   const dist = Math.round(distanceMeters(origin.lat, origin.lon, r.lat, r.lon));
   return (
@@ -319,6 +360,12 @@ function Candidate({
       </div>
       <Links restaurant={r} />
       <p className="muted small">{poolSize} restauranger i området</p>
+      {staleSince && (
+        <p className="muted small">
+          Använder sparad lista från{' '}
+          {new Date(staleSince).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' })}
+        </p>
+      )}
     </section>
   );
 }
