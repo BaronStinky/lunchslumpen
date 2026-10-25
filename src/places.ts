@@ -94,6 +94,8 @@ async function searchNearby(circle: Circle, key: string): Promise<Place[]> {
       },
       body: JSON.stringify({
         includedTypes: ['restaurant'],
+        // includedTypes matchar även sekundära typer, så hotell med restaurang slank med.
+        excludedPrimaryTypes: ['hotel', 'lodging'],
         maxResultCount: 20,
         languageCode: 'sv',
         rankPreference: 'POPULARITY',

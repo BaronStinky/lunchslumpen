@@ -50,7 +50,7 @@ export interface RestaurantCache {
 const KEY = 'lunchslumpen';
 export const KNOWN_KEY = 'lunchslumpen.known';
 const CACHE_KEY = 'lunchslumpen.cache';
-const CACHE_VERSION = 2; // 2 = Google Places. Höj när formatet eller källan ändras.
+const CACHE_VERSION = 3; // 3 = Google Places utan hotell. Höj när formatet, källan eller filtret ändras.
 
 export const defaultSettings: Settings = {
   radiusMeters: 1000,
