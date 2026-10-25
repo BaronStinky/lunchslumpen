@@ -25,7 +25,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Cacha inte Overpass-svar – de ska alltid vara färska.
+        // Service workern cachar inte API-svar – appen sköter sin egen cache i localStorage.
         navigateFallback: 'index.html',
       },
     }),

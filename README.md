@@ -4,9 +4,9 @@ Slumpar fram var du ska äta lunch. Ingen inloggning, ingen backend – allt lig
 
 ## Hur den fungerar
 
-1. Tryck **Var ska vi käka?** – appen hämtar din position och frågar OpenStreetMap (via Overpass API) efter restauranger inom vald radie.
+1. Tryck **Var ska vi käka?** – appen hämtar din position och frågar Google Places efter restauranger inom vald radie.
 2. En restaurang slumpas fram. **Vi går hit** låser valet, **Slumpa om** tar en annan.
-3. Nästa gång du öppnar appen får du betygsätta besöket 1–5 (eller markera att ni aldrig gick dit).
+3. Betygsätt besöket 1–5 när ni har ätit (eller markera att ni aldrig gick dit, eller ångra valet).
 
 Regler:
 
@@ -16,19 +16,25 @@ Regler:
 
 ## Köra lokalt
 
+Appen behöver en Google Places API-nyckel (Places API (New)):
+
 ```bash
+cp .env.example .env.local   # fyll i VITE_GOOGLE_PLACES_KEY
 npm install
 npm run dev
 ```
+
+Nyckeln måste tillåta den adress du kör från (HTTP-referrer i Google Cloud), t.ex. `http://localhost:5173/*` för `npm run dev`.
 
 Geolocation kräver HTTPS eller `localhost`, så testa i webbläsaren på datorn eller via en tunnel (t.ex. `npx localtunnel`) på mobilen.
 
 ## Deploy
 
-`npm run build` ger en statisk `dist/`-mapp. Appen är en PWA och kan läggas på hemskärmen från valfri statisk host: GitHub Pages, Azure Static Web Apps, Cloudflare Pages, Netlify.
+Push till `main` bygger och deployar till GitHub Pages via `.github/workflows/deploy.yml`. Nyckeln läses från repo-secreten `VITE_GOOGLE_PLACES_KEY` (Settings → Secrets and variables → Actions). Saknas den stoppas bygget.
+
+Nyckeln hamnar i den publicerade JS-filen, så begränsa den i Google Cloud till HTTP-referrern `https://baronstinky.github.io/*` och till Places API (New).
 
 ## Nästa steg om den uppskattas
 
-- Backend (.NET minimal API + SQLite) så betyg och karantän delas mellan kollegor.
-- Byt Overpass mot Google Places om OSM-täckningen känns tunn eller ni vill ha öppettider konsekvent.
+- Backend (.NET minimal API + SQLite) så betyg och vila delas mellan kollegor.
 - Filter: kök, pris, "bara öppna nu".

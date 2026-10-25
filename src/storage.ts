@@ -1,10 +1,9 @@
 export interface Restaurant {
-  id: string; // "node/123" eller "way/456" från OSM
+  id: string; // Google place id
   name: string;
   lat: number;
   lon: number;
   cuisine?: string;
-  openingHours?: string;
   website?: string;
 }
 
@@ -38,8 +37,9 @@ export interface State {
   settings: Settings;
 }
 
-/** Senaste lyckade Overpass-svaret, så appen funkar när Overpass inte svarar. */
+/** Senaste lyckade hämtningen, så appen funkar när Google Places inte svarar. */
 export interface RestaurantCache {
+  version: number; // cacher med annan version (t.ex. från en tidigare källa) ignoreras
   lat: number;
   lon: number;
   radius: number;
@@ -50,6 +50,7 @@ export interface RestaurantCache {
 const KEY = 'lunchslumpen';
 export const KNOWN_KEY = 'lunchslumpen.known';
 const CACHE_KEY = 'lunchslumpen.cache';
+const CACHE_VERSION = 2; // 2 = Google Places. Höj när formatet eller källan ändras.
 
 export const defaultSettings: Settings = {
   radiusMeters: 1000,
@@ -90,6 +91,7 @@ export function loadCache(): RestaurantCache | null {
     if (!raw) return null;
     const c = JSON.parse(raw) as RestaurantCache;
     if (
+      c.version !== CACHE_VERSION ||
       typeof c.lat !== 'number' ||
       typeof c.lon !== 'number' ||
       typeof c.radius !== 'number' ||
@@ -104,9 +106,9 @@ export function loadCache(): RestaurantCache | null {
   }
 }
 
-export function saveCache(cache: RestaurantCache): void {
+export function saveCache(cache: Omit<RestaurantCache, 'version'>): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ version: CACHE_VERSION, ...cache }));
   } catch {
     // fullt localStorage → klara oss utan cache
   }

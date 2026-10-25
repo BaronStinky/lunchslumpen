@@ -24,7 +24,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Stoppa deployen hellre än att publicera en app utan nyckel.
+      - name: Kontrollera VITE_GOOGLE_PLACES_KEY
+        env:
+          VITE_GOOGLE_PLACES_KEY: ${{ secrets.VITE_GOOGLE_PLACES_KEY }}
+        run: |
+          if [ -z "$VITE_GOOGLE_PLACES_KEY" ]; then
+            echo "::error::Repo-secreten VITE_GOOGLE_PLACES_KEY saknas (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
       - run: npm run build
+        env:
+          VITE_GOOGLE_PLACES_KEY: ${{ secrets.VITE_GOOGLE_PLACES_KEY }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchRestaurants } from './overpass';
+import { fetchRestaurants, MissingApiKeyError } from './places';
 import {
   averageScore,
   distanceMeters,
@@ -27,7 +27,7 @@ type Phase =
       restaurant: Restaurant;
       pool: Restaurant[];
       origin: Coords;
-      staleSince?: string; // satt när Overpass föll och vi använder en gammal cache
+      staleSince?: string; // satt när hämtningen föll och vi använder en gammal cache
     }
   | { kind: 'error'; message: string };
 
@@ -104,12 +104,20 @@ export default function App() {
             restaurants: pool,
           });
         }
-      } catch {
-        if (!cache) {
-          setPhase({ kind: 'error', message: 'Overpass svarade inte. Försök igen om en stund.' });
+      } catch (e) {
+        if (e instanceof MissingApiKeyError) {
+          // Konfigurationsfel – ska synas, inte döljas bakom en gammal cache.
+          setPhase({
+            kind: 'error',
+            message: 'Google Places-nyckel saknas. Bygg appen med VITE_GOOGLE_PLACES_KEY satt.',
+          });
           return;
         }
-        // Overpass föll men vi har en äldre lista härifrån – bättre än ingenting.
+        if (!cache) {
+          setPhase({ kind: 'error', message: 'Kunde inte hämta restauranger. Försök igen om en stund.' });
+          return;
+        }
+        // Hämtningen föll men vi har en äldre lista härifrån – bättre än ingenting.
         pool = cache.restaurants;
         staleSince = cache.fetchedAt;
       }
@@ -127,7 +135,7 @@ export default function App() {
         kind: 'error',
         message:
           n === 0
-            ? `Inga restauranger inom ${state.settings.radiusMeters} m i OpenStreetMap.`
+            ? `Inga restauranger inom ${state.settings.radiusMeters} m.`
             : `Alla ${n} restauranger inom radien vilar eller är bannade just nu. Öka radien eller vänta.`,
       });
       return;
@@ -352,9 +360,8 @@ function Candidate({
       <h2>{r.name}</h2>
       <p className="muted">
         {dist} m bort
-        {r.cuisine && ` · ${r.cuisine.replace(/_/g, ' ').replace(/;/g, ', ')}`}
+        {r.cuisine && ` · ${r.cuisine}`}
       </p>
-      {r.openingHours && <p className="muted small">{r.openingHours}</p>}
       <div className="actions">
         <button className="primary" onClick={onAccept}>
           Vi går hit
@@ -374,7 +381,9 @@ function Candidate({
 }
 
 function Links({ restaurant: r }: { restaurant: Restaurant }) {
-  const maps = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lon}&travelmode=walking`;
+  // Ett väntande besök sparat före bytet till Google Places har ett id som inte är ett place id.
+  const placeId = r.id.includes('/') ? '' : `&destination_place_id=${encodeURIComponent(r.id)}`;
+  const maps = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lon}${placeId}&travelmode=walking`;
   return (
     <p className="links">
       <a href={maps} target="_blank" rel="noreferrer">
