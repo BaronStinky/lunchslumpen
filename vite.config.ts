@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  base: '/lunchslumpen/',
   plugins: [
     react(),
     VitePWA({
@@ -13,6 +14,8 @@ export default defineConfig({
         short_name: 'Lunch',
         description: 'Slumpar fram var du ska äta lunch.',
         lang: 'sv',
+        start_url: '/lunchslumpen/',
+        scope: '/lunchslumpen/',
         theme_color: '#d6542b',
         background_color: '#faf7f2',
         display: 'standalone',
