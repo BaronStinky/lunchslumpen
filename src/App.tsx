@@ -94,13 +94,16 @@ export default function App() {
       setPhase({ kind: 'searching' });
       try {
         pool = await fetchRestaurants(origin.lat, origin.lon, radius);
-        saveCache({
-          lat: origin.lat,
-          lon: origin.lon,
-          radius,
-          fetchedAt: new Date().toISOString(),
-          restaurants: pool,
-        });
+        // Tomma svar sparas inte – annars skulle "inga restauranger" fastna i en vecka.
+        if (pool.length > 0) {
+          saveCache({
+            lat: origin.lat,
+            lon: origin.lon,
+            radius,
+            fetchedAt: new Date().toISOString(),
+            restaurants: pool,
+          });
+        }
       } catch {
         if (!cache) {
           setPhase({ kind: 'error', message: 'Overpass svarade inte. Försök igen om en stund.' });
