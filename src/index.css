@@ -205,3 +205,23 @@ select {
   white-space: nowrap;
   font-size: 0.9rem;
 }
+
+.rate-label {
+  margin: 20px 0 0;
+  font-weight: 600;
+}
+
+.secondary {
+  display: flex;
+  justify-content: space-between;
+}
+
+.footer {
+  margin-top: 40px;
+  text-align: center;
+}
+
+.footer button.link {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}

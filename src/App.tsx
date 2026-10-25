@@ -6,7 +6,15 @@ import {
   exclusionReason,
   pickRandom,
 } from './picker';
-import { load, save, type Restaurant, type State } from './storage';
+import {
+  clearAll,
+  emptyState,
+  KNOWN_KEY,
+  load,
+  save,
+  type Restaurant,
+  type State,
+} from './storage';
 
 type Phase =
   | { kind: 'idle' }
@@ -24,20 +32,28 @@ export default function App() {
   const [state, setState] = useState<State>(load);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [showHistory, setShowHistory] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => save(state), [state]);
 
   // Namn på restauranger vi sett, så historiken kan visa namn även utan nätverk.
   const [known, setKnown] = useState<Record<string, Restaurant>>(() => {
     try {
-      return JSON.parse(localStorage.getItem('lunchslumpen.known') ?? '{}');
+      return JSON.parse(localStorage.getItem(KNOWN_KEY) ?? '{}');
     } catch {
       return {};
     }
   });
   useEffect(() => {
-    localStorage.setItem('lunchslumpen.known', JSON.stringify(known));
+    localStorage.setItem(KNOWN_KEY, JSON.stringify(known));
   }, [known]);
+
+  // "Säker? Tryck igen" återgår efter 3 sekunder om man inte trycker igen.
+  useEffect(() => {
+    if (!confirmClear) return;
+    const timer = setTimeout(() => setConfirmClear(false), 3_000);
+    return () => clearTimeout(timer);
+  }, [confirmClear]);
 
   async function roll() {
     setPhase({ kind: 'locating' });
@@ -78,10 +94,11 @@ export default function App() {
     setPhase({ kind: 'candidate', restaurant: pick, pool, origin });
   }
 
-  function accept(r: Restaurant) {
+  function accept(r: Restaurant, origin: Coords) {
+    const distance = Math.round(distanceMeters(origin.lat, origin.lon, r.lat, r.lon));
     setState((s) => ({
       ...s,
-      pending: r,
+      pending: { ...r, distance },
       visits: [...s.visits, { restaurantId: r.id, date: new Date().toISOString() }],
     }));
     setPhase({ kind: 'idle' });
@@ -99,6 +116,34 @@ export default function App() {
 
   function skipRating() {
     setState((s) => ({ ...s, pending: null }));
+  }
+
+  /** Tar bort besöket som "Vi går hit" registrerade, och därmed vilan. */
+  function undoVisit() {
+    setState((s) => {
+      if (!s.pending) return s;
+      const id = s.pending.id;
+      const i = s.visits.findLastIndex((v) => v.restaurantId === id);
+      return {
+        ...s,
+        pending: null,
+        visits: i === -1 ? s.visits : s.visits.filter((_, j) => j !== i),
+      };
+    });
+    setPhase({ kind: 'idle' });
+  }
+
+  function clearData() {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      return;
+    }
+    clearAll();
+    setState(emptyState());
+    setKnown({});
+    setPhase({ kind: 'idle' });
+    setShowHistory(false);
+    setConfirmClear(false);
   }
 
   function updateSetting<K extends keyof State['settings']>(key: K, value: State['settings'][K]) {
@@ -132,8 +177,13 @@ export default function App() {
 
       {state.pending ? (
         <section className="card">
-          <p className="label">Hur var det på</p>
+          <p className="label">Dagens lunch</p>
           <h2>{state.pending.name}</h2>
+          {state.pending.distance !== undefined && (
+            <p className="muted">{state.pending.distance} m bort</p>
+          )}
+          <Links restaurant={state.pending} />
+          <p className="rate-label">Hur var det?</p>
           <div className="stars">
             {[1, 2, 3, 4, 5].map((n) => (
               <button key={n} className="star" onClick={() => rate(n)} aria-label={`${n} av 5`}>
@@ -141,15 +191,20 @@ export default function App() {
               </button>
             ))}
           </div>
-          <button className="link" onClick={skipRating}>
-            Vi gick aldrig dit
-          </button>
+          <div className="secondary">
+            <button className="link" onClick={skipRating}>
+              Vi gick aldrig dit
+            </button>
+            <button className="link" onClick={undoVisit}>
+              Ångra
+            </button>
+          </div>
         </section>
       ) : phase.kind === 'candidate' ? (
         <Candidate
           restaurant={phase.restaurant}
           origin={phase.origin}
-          onAccept={() => accept(phase.restaurant)}
+          onAccept={() => accept(phase.restaurant, phase.origin)}
           onReroll={() => rollFrom(phase.pool, phase.origin)}
           poolSize={phase.pool.length}
         />
@@ -223,6 +278,12 @@ export default function App() {
           )}
         </section>
       )}
+
+      <footer className="footer">
+        <button className="link small" onClick={clearData}>
+          {confirmClear ? 'Säker? Tryck igen' : 'Rensa all data'}
+        </button>
+      </footer>
     </main>
   );
 }
@@ -241,7 +302,6 @@ function Candidate({
   poolSize: number;
 }) {
   const dist = Math.round(distanceMeters(origin.lat, origin.lon, r.lat, r.lon));
-  const maps = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lon}&travelmode=walking`;
   return (
     <section className="card">
       <p className="label">Dagens lunch</p>
@@ -257,21 +317,28 @@ function Candidate({
         </button>
         <button onClick={onReroll}>Slumpa om</button>
       </div>
-      <p className="links">
-        <a href={maps} target="_blank" rel="noreferrer">
-          Vägbeskrivning
-        </a>
-        {r.website && (
-          <>
-            {' · '}
-            <a href={r.website} target="_blank" rel="noreferrer">
-              Hemsida
-            </a>
-          </>
-        )}
-      </p>
+      <Links restaurant={r} />
       <p className="muted small">{poolSize} restauranger i området</p>
     </section>
+  );
+}
+
+function Links({ restaurant: r }: { restaurant: Restaurant }) {
+  const maps = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lon}&travelmode=walking`;
+  return (
+    <p className="links">
+      <a href={maps} target="_blank" rel="noreferrer">
+        Vägbeskrivning
+      </a>
+      {r.website && (
+        <>
+          {' · '}
+          <a href={r.website} target="_blank" rel="noreferrer">
+            Hemsida
+          </a>
+        </>
+      )}
+    </p>
   );
 }
 

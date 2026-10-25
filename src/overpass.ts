@@ -2,8 +2,12 @@ import type { Restaurant } from './storage';
 
 const ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ];
+
+// En server som hänger ska inte blockera – efter så här lång tid går vi vidare till nästa spegel.
+const TIMEOUT_MS = 8_000;
 
 interface OverpassElement {
   type: 'node' | 'way' | 'relation';
@@ -21,18 +25,21 @@ export async function fetchRestaurants(
 ): Promise<Restaurant[]> {
   // nwr = node/way/relation. "out center" ger en mittpunkt för ytor (byggnader).
   const query = `
-    [out:json][timeout:25];
+    [out:json][timeout:10];
     nwr(around:${radius},${lat},${lon})["amenity"="restaurant"]["name"];
     out center tags;
   `;
 
   let lastError: unknown;
   for (const url of ENDPOINTS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
       const res = await fetch(url, {
         method: 'POST',
         body: 'data=' + encodeURIComponent(query),
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error(`Overpass ${res.status}`);
       const json = (await res.json()) as { elements: OverpassElement[] };
@@ -41,6 +48,8 @@ export async function fetchRestaurants(
         .filter((r): r is Restaurant => r !== null);
     } catch (e) {
       lastError = e;
+    } finally {
+      clearTimeout(timer);
     }
   }
   throw lastError ?? new Error('Overpass otillgänglig');

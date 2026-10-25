@@ -14,17 +14,15 @@ export function averageScore(ratings: Rating[], id: string): number | null {
 
 export type Exclusion = 'resting' | 'banned';
 
-/** Varför en restaurang inte kan väljas just nu, eller null om den är valbar. */
+/**
+ * Varför en restaurang inte kan väljas just nu, eller null om den är valbar.
+ * Bannad kontrolleras före vila så att historiken visar "bannad" när båda gäller.
+ */
 export function exclusionReason(
   id: string,
   { ratings, visits, settings }: State,
   now = new Date(),
 ): Exclusion | null {
-  const lastVisit = latest(visits, id);
-  if (lastVisit && daysSince(lastVisit.date, now) < settings.restDays) {
-    return 'resting';
-  }
-
   const avg = averageScore(ratings, id);
   if (avg !== null && avg <= settings.banThreshold) {
     // Bannad i banDays räknat från senaste betyget. Därefter får den en ny chans.
@@ -32,6 +30,11 @@ export function exclusionReason(
     if (lastRating && daysSince(lastRating.date, now) < settings.banDays) {
       return 'banned';
     }
+  }
+
+  const lastVisit = latest(visits, id);
+  if (lastVisit && daysSince(lastVisit.date, now) < settings.restDays) {
+    return 'resting';
   }
 
   return null;
